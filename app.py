@@ -1,31 +1,34 @@
 from  PyQt5 import QtWidgets as qtw
 from PyQt5 import QtGui as qtg
 from PyQt5 import QtCore as qtc
-import os
+import os,sys
 
 import tensorflow as tf
+print("PYTHONPATH=",os.environ["PYTHONPATH"])
+from object_detection.utils import label_map_util
 
-from utils import label_map_util
 
-@dataclass
-class App:
-    model:tf.Graph=None
-    labelmap:dict=None
-    image:qtg.QImage=None
 
-app = App()
 
 class MainW(qtw.QWidget):
-    def __init__(self):
+    def __init__(self,app):
         super(MainW,self).__init__()
+        self.app = app
         self.setLayout(qtw.QVBoxLayout())
-        self.layout().addWidget(ModelW("Drop model *.pb file here"))
-        self.layout().addWidget(LabelMapW())
-        #self.layout().addWidget(qtw.QPushButton("Run model"))
+        self.layout().addWidget(ModelW(app,"Drop model *.pb file here"))
+        self.layout().addWidget(LabelMapW(app))
+        runbutton = qtw.QPushButton("Run model",self)
+        runbutton.clicked.connect(self.runModel)
+        self.layout().addWidget(runbutton)
+    def runModel(self):
+        if not self.app.graph: return
+
+
 
 class ImageW(qtw.QScrollArea):
-    def __init__(self):
+    def __init__(self,app):
         super(ImageW,self).__init__()
+        self.app = app
         self.image = qtg.QImage()
         self.setWidget(qtw.QLabel())
         self.setWidgetResizable(True)
@@ -53,8 +56,9 @@ class ImageW(qtw.QScrollArea):
 
 
 class ModelW(qtw.QLabel):
-    def __init__(self,*args):
+    def __init__(self,app,*args):
         super(ModelW,self).__init__(*args)
+        self.app = app
         self.setAcceptDrops(True)
         self.setBaseSize(100,200)
     def dragEnterEvent(self, e: qtg.QDragEnterEvent) -> None:
@@ -66,8 +70,8 @@ class ModelW(qtw.QLabel):
         self.loadModel(e.mimeData().urls()[0].toLocalFile())
     def loadModel(self,path:str):
         self.setText(path)
-        detection_graph = tf.Graph()
-        with detection_graph.as_default():
+        self.app.graph = tf.Graph()
+        with self.app.graph.as_default():
             od_graph_def = tf.GraphDef()
             with tf.gfile.GFile(path, 'rb') as fid:
                 serialized_graph = fid.read()
@@ -75,8 +79,9 @@ class ModelW(qtw.QLabel):
                 tf.import_graph_def(od_graph_def, name='')
 
 class LabelMapW(qtw.QListWidget):
-    def __init__(self,*args):
+    def __init__(self,app,*args):
         super(LabelMapW,self).__init__(*args)
+        self.app = app
         self.setAcceptDrops(True)
         self.setDragEnabled(True)
         self.setSelectionMode(qtw.QAbstractItemView.ExtendedSelection)
@@ -100,11 +105,20 @@ class LabelMapW(qtw.QListWidget):
             self.addItem(str(l.id) +": "+l.display_name)
 
 
+class MyApp(qtw.QApplication):
+    def __init__(self,*args):
+        super(MyApp,self).__init__(*args)
+        # windows
+        self.mainw = MainW(self)
+        self.mainw.show()
+        self.imagew = ImageW(self)
+        self.imagew.show()
+        # globals
+        self.graph = None
+        self.labelmap = None
+        self.image = None
+
 if __name__ == "__main__":
 
-    app =qtw.QApplication([])
-    mainw = MainW()
-    mainw.show()
-    imagew = ImageW()
-    imagew.show()
+    app = MyApp([])
     app.exec()
